@@ -11,33 +11,53 @@ from datetime import datetime, timedelta
 import io, base64
 from statsmodels.tsa.arima.model import ARIMA
 
-# Set page configuration with wide layout and custom CSS for a classy look
-st.set_page_config(page_title="Enhanced Stock Analysis Platform (INR)", layout="wide")
+# Set page configuration and custom CSS for a modern, clean, and responsive look
+st.set_page_config(page_title="QuantiQ (Stock Analysis Platform)", layout="wide")
 st.markdown("""
     <style>
-    /* Sidebar styling */
-    .css-1d391kg { font-size: 2.5rem; font-weight: bold; text-align: center; }
-    .sidebar .sidebar-content {
-        background: linear-gradient(135deg, #283E51, #4B79A1);
-        color: white;
-    }
+    /* Global background */
     .reportview-container {
         background: #f0f2f6;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-    /* Fix sidebar control panel position */
+    /* Sidebar styling */
+    .sidebar .sidebar-content {
+        background: linear-gradient(135deg, #1f2a44, #3e4a70);
+        color: #f0f0f0;
+    }
+    .sidebar .sidebar-content h1, .sidebar .sidebar-content h2 {
+        color: #f0f0f0;
+    }
+    /* Sticky sidebar controls */
     .sidebar .sidebar-content .css-1v0mbdj {
         position: sticky;
         top: 0;
     }
     /* Button styling */
     .stButton>button {
-        background-color: #4B79A1;
-        color: white;
+        background-color: #3e4a70;
+        color: #fff;
         font-size: 16px;
         font-weight: bold;
         border-radius: 8px;
         padding: 10px 24px;
         margin-top: 10px;
+        transition: background-color 0.3s ease;
+    }
+    .stButton>button:hover {
+        background-color: #1f2a44;
+    }
+    /* Main title style */
+    .css-18ni7ap {
+        font-size: 2.8rem;
+        font-weight: bold;
+        text-align: center;
+    }
+    /* Responsive styling for mobile */
+    @media only screen and (max-width: 600px) {
+        .css-18ni7ap { font-size: 1.8rem; }
+        .stButton>button { font-size: 14px; padding: 8px 16px; }
+        .reportview-container { padding: 10px; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -66,13 +86,15 @@ SAMPLE_TICKERS = [
 ALPHA_API_KEY = "VXT9V6JSOD1JR0IM"
 
 # ---------------------------
-# Helper: Scrollable Chart Display
+# Helper: Scrollable Chart Display (Responsive)
 # ---------------------------
-def display_scrollable_chart(fig, max_width=1500):
+def display_scrollable_chart(fig):
+    """Convert Matplotlib figure to responsive HTML image."""
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
     data = base64.b64encode(buf.getbuffer()).decode("ascii")
-    html = f'<div style="overflow-x: auto; width: 100%;"><img src="data:image/png;base64,{data}" style="max-width: {max_width}px;"/></div>'
+    # The image will always scale to 100% of its container, making it responsive.
+    html = f'<div style="overflow-x: auto; width: 100%;"><img src="data:image/png;base64,{data}" style="width: 100%; max-width: 1500px;"/></div>'
     st.markdown(html, unsafe_allow_html=True)
 
 # ---------------------------
@@ -328,51 +350,26 @@ def plot_technical_indicators(data, ticker, company_name):
 # Main App Layout with Tabs
 # ---------------------------
 def main():
-    st.title("Enhanced Stock & Trading Analysis Dashboard (INR)")
+    st.title("QuantiQ (Stock Analysis Platform)")
     
-    # Sidebar: User controls (sticky control panel)
+    # Sidebar: Control Panel
     st.sidebar.title("Control Panel")
-    ticker = st.sidebar.selectbox("Select Ticker Symbol", SAMPLE_TICKERS, index=0)
+    ticker = st.sidebar.selectbox("Ticker Symbol", SAMPLE_TICKERS, index=0)
     chart_type = st.sidebar.radio("Chart Type", ("Line Chart", "Candlestick Chart"))
     forecast_method = st.sidebar.selectbox("Forecast Method", ("Polynomial", "ARIMA"))
     forecast_days = st.sidebar.slider("Forecast Horizon (Days)", min_value=5, max_value=30, value=10, step=1)
     today = datetime.today().date()
     default_start = today - timedelta(days=182)
-    date_range = st.sidebar.date_input("Select Date Range", [default_start, today])
+    date_range = st.sidebar.date_input("Date Range", [default_start, today])
     if len(date_range) != 2:
-        st.error("Please select both a start and an end date.")
+        st.error("Select both start and end dates.")
         return
     start_date, end_date = date_range
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = end_date.strftime("%Y-%m-%d")
     
-    # Sidebar: Learn More section about indicators
-    with st.sidebar.expander("Learn About Indicators & Forecast Methods"):
-        st.markdown("""
-        **SMA (Simple Moving Average):**  
-        Averages closing prices over a specified period to smooth out price fluctuations.
-        
-        **Candlestick Chart:**  
-        Shows open, high, low, and close prices to provide insight into market sentiment.
-        
-        **Bollinger Bands:**  
-        Volatility bands placed above and below the SMA indicating overbought/oversold conditions.
-        
-        **RSI (Relative Strength Index):**  
-        A momentum oscillator that measures price changes to identify overbought/oversold conditions.
-        
-        **MACD (Moving Average Convergence Divergence):**  
-        Shows the relationship between two moving averages to highlight momentum shifts.
-        
-        **Polynomial Forecast:**  
-        Uses polynomial regression to capture non-linear trends in price data.
-        
-        **ARIMA Forecast:**  
-        A time series forecasting model that uses autoregressive, integrated, and moving average components.
-        """)
-    
-    # Create tabs for separate analysis sections
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "Historical Chart", "Technical Analysis", "Forecast & Predictions", "Advanced Details"])
+    # Main tabs for analysis sections
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "Historical Chart", "Technical Analysis", "Forecast & Predictions", "About"])
     
     if st.sidebar.button("Fetch Data"):
         with st.spinner(f"Fetching data for {ticker} from {start_str} to {end_str}..."):
@@ -382,7 +379,7 @@ def main():
                 data = get_alpha_vantage_daily_data(ticker, outputsize="compact", api_key=ALPHA_API_KEY)
                 source = "Alpha Vantage"
             if data.empty:
-                st.error(f"No historical data returned for {ticker}. Try a different ticker or date range.")
+                st.error(f"No historical data for {ticker}. Try another ticker or date range.")
                 return
             company_name = get_company_name(ticker) if source=="yfinance" else ticker
             sma = calculate_sma(data)
@@ -431,10 +428,28 @@ def main():
                 forecast_df = forecast.to_frame(name="Predicted Close (INR)")
                 forecast_df.index.name = "Date"
                 st.table(forecast_df)
-                
+            
             with tab5:
-                st.subheader("Advanced Analysis Details")
-                st.markdown("Additional analysis such as correlation metrics, trading signals, or multiple forecasting models can be added here.")
+                st.subheader("About This Platform")
+                st.markdown("""
+                **QuantiQ (Stock Analysis Platform)** provides a comprehensive suite of trading analysis tools:
+                
+                - **Overview:** Displays the current market status and realtime updates.
+                - **Historical Chart:** Visualize historical price data as a line or candlestick chart with volume and a 20-day moving average.
+                - **Technical Analysis:** Explore key technical indicators such as Bollinger Bands, RSI, and MACD.
+                - **Forecast & Predictions:** Forecast future prices using advanced Polynomial or ARIMA models.
+                
+                **Glossary:**
+                - **SMA:** Simple Moving Average – smooths price data over time.
+                - **Candlestick Chart:** Visualizes open, high, low, and close prices to reveal market sentiment.
+                - **Bollinger Bands:** Volatility bands that indicate overbought or oversold conditions.
+                - **RSI:** Relative Strength Index – a momentum oscillator indicating overbought/oversold levels.
+                - **MACD:** Moving Average Convergence Divergence – measures momentum changes.
+                - **Polynomial Forecast:** Uses polynomial regression for capturing non-linear trends.
+                - **ARIMA Forecast:** A statistical forecasting method using autoregressive integrated moving averages.
+                
+                Use the Control Panel to adjust parameters and explore the data.
+                """)
             
             if source == "Alpha Vantage":
                 quote = get_alpha_vantage_global_quote(ticker, api_key=ALPHA_API_KEY)
@@ -444,9 +459,8 @@ def main():
     
     st.sidebar.markdown("---")
     st.sidebar.info(
-        "This platform provides an innovative stock analysis experience with detailed historical charts, technical indicators, "
-        "and advanced forecasting models. Use the controls above to adjust parameters, and refer to the 'Learn About' section for "
-        "explanations of each indicator and forecast method."
+        "QuantiQ provides an innovative, responsive, and trading-friendly analysis experience with detailed charts, "
+        "technical indicators, and forecasting tools. Use the Control Panel to customize your analysis."
     )
 
 if __name__ == "__main__":
