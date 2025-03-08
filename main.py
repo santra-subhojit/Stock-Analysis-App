@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
-from sklearn.linear_model import LinearRegression
 import mplfinance as mpf
 import requests
 from datetime import datetime, timedelta
@@ -15,7 +14,7 @@ from statsmodels.tsa.arima.model import ARIMA
 st.set_page_config(page_title="QuantiQ (Stock Analysis Platform)", layout="wide")
 st.markdown("""
     <style>
-    /* Global background */
+    /* Global background and fonts */
     .reportview-container {
         background: #f0f2f6;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -28,7 +27,6 @@ st.markdown("""
     .sidebar .sidebar-content h1, .sidebar .sidebar-content h2 {
         color: #f0f0f0;
     }
-    /* Sticky sidebar controls */
     .sidebar .sidebar-content .css-1v0mbdj {
         position: sticky;
         top: 0;
@@ -47,43 +45,132 @@ st.markdown("""
     .stButton>button:hover {
         background-color: #1f2a44;
     }
-    /* Main title style */
-    .css-18ni7ap {
+    /* Responsive header with two spans */
+    .main-title {
+        text-align: center;
         font-size: 2.8rem;
         font-weight: bold;
-        text-align: center;
     }
-    /* Responsive styling for mobile */
+    .full-title { display: inline; }
+    .short-title { display: none; }
+    /* Control panel arrow hint for small screens */
+    .control-arrow {
+        display: block;
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        font-size: 16px;
+        color: #1f2a44;
+        animation: fadeInOut 2s infinite;
+        z-index: 1000;
+    }
+    @keyframes fadeInOut {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+    }
     @media only screen and (max-width: 600px) {
-        .css-18ni7ap { font-size: 1.8rem; }
+        .main-title { font-size: 1.8rem; }
+        .full-title { display: none; }
+        .short-title { display: inline; }
         .stButton>button { font-size: 14px; padding: 8px 16px; }
         .reportview-container { padding: 10px; }
     }
     </style>
     """, unsafe_allow_html=True)
 
+# Responsive Header: Two spans for full and short title text
+st.markdown('''
+    <h1 class="main-title">
+       <span class="full-title">QuantiQ (Stock Analysis Platform)</span>
+       <span class="short-title">QuantiQ</span>
+    </h1>
+''', unsafe_allow_html=True)
+
 # Conversion rate from USD to INR
 USD_TO_INR = 75.0
 
-# Expanded ticker list (U.S. and Indian stocks; Indian tickers use ".NS")
+# Expanded and updated ticker list (both US and Indian stocks)
+# These lists include additional in-demand stocks and span multiple sectors.
 SAMPLE_TICKERS = [
-    # U.S. Stocks
-    "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NFLX", "NVDA", "BABA", "INTC", "AMD",
-    "IBM", "ORCL", "CSCO", "GE", "BA", "F", "GM", "KO", "PEP", "DIS", "WMT", "COST", "MMM", "JNJ",
+    # US Stocks
+    "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NFLX", "NVDA", "AMD", "IBM", "ORCL", "CSCO",
+    "DIS", "KO", "PEP", "WMT", "COST", "SQ", "UBER", "ZM", "SNOW",
     # Indian Stocks
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "SBIN.NS",
-    "WIPRO.NS", "HCLTECH.NS", "LT.NS", "ULTRACEMCO.NS", "MARUTI.NS", "AXISBANK.NS", "YESBANK.NS",
-    "BAJFINANCE.NS", "ZEEL.NS", "HINDUNILVR.NS", "ONGC.NS", "COALINDIA.NS", "TITAN.NS", "DRREDDY.NS",
-    "ADANIPORTS.NS", "ADANIGREEN.NS", "SHREECEM.NS", "HDFC.NS", "M&M.NS", "BPCL.NS", "VEDL.NS",
-    "NESTLEIND.NS", "IOC.NS", "UPL.NS", "JSWSTEEL.NS", "POWERGRID.NS", "CIPLA.NS", "GRASIM.NS",
-    "DIVISLAB.NS", "BIOCON.NS", "SUNPHARMA.NS", "EICHERMOT.NS", "ADANIENT.NS", "PIDILITIND.NS",
-    "GODREJCP.NS", "HEROMOTOCO.NS", "COLPAL.NS", "ICICIGI.NS", "SUNTV.NS", "TECHM.NS",
-    "MPHASIS.NS", "LUPIN.NS", "JSWENERGY.NS", "BOSCHLTD.NS", "MRPL.NS", "ZOMATO.NS", "NYKAA.NS",
-    "IRCTC.NS", "PAYTM.NS", "POLICYBAZAAR.NS", "DELHIVERY.NS"
+    "WIPRO.NS", "HCLTECH.NS", "TECHM.NS", "MPHASIS.NS",
+    "DRREDDY.NS", "CIPLA.NS", "BIOCON.NS", "SUNPHARMA.NS", "LUPIN.NS",
+    "MARUTI.NS", "TATAMOTORS.NS", "HEROMOTOCO.NS", "M&M.NS",
+    "AXISBANK.NS", "YESBANK.NS", "BAJFINANCE.NS", "ICICIPRULI.NS",
+    "BHARTIARTL.NS", "NESTLEIND.NS",
+    "ONGC.NS", "COALINDIA.NS", "ADANIPORTS.NS", "ADANIGREEN.NS",
+    "JSWSTEEL.NS", "POWERGRID.NS", "SHREECEM.NS", "COLPAL.NS", "BOSCHLTD.NS",
+    # Additional high-growth / trending Indian stocks:
+    "PIDILITIND.NS", "TITAN.NS", "COFORGE.NS", "UPL.NS", "VEDL.NS", "GODREJCP.NS"
 ]
 
-# Alpha Vantage API key (embedded)
-ALPHA_API_KEY = "VXT9V6JSOD1JR0IM"
+# Define diverse stock categories with more in-demand and sector-specific stocks
+stock_categories = {
+    "All": SAMPLE_TICKERS,
+    "Tech": [
+        # US Tech stocks
+        "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NFLX", "NVDA", "AMD", "IBM", "ORCL", "CSCO", "SQ", "ZM", "SNOW",
+        # Indian IT/Tech stocks
+        "TCS.NS", "INFY.NS", "WIPRO.NS", "HCLTECH.NS", "TECHM.NS", "MPHASIS.NS", "COFORGE.NS"
+    ],
+    "Healthcare": [
+        "DRREDDY.NS", "CIPLA.NS", "BIOCON.NS", "SUNPHARMA.NS", "LUPIN.NS",
+        # Optionally, add a major US healthcare name if desired, e.g. "JNJ" (if you wish to extend US exposure)
+        "JNJ"
+    ],
+    "Automobile": [
+        "MARUTI.NS", "TATAMOTORS.NS", "HEROMOTOCO.NS", "M&M.NS"
+    ],
+    "Finance": [
+        "ICICIBANK.NS", "HDFCBANK.NS", "SBIN.NS", "AXISBANK.NS", "YESBANK.NS", "BAJFINANCE.NS", "ICICIPRULI.NS"
+    ],
+    "Consumer": [
+        "RELIANCE.NS", "BHARTIARTL.NS", "NESTLEIND.NS", "WMT", "COST", "PEP", "GODREJCP.NS", "TITAN.NS", "PIDILITIND.NS"
+    ],
+    "Energy": [
+        "ONGC.NS", "COALINDIA.NS", "ADANIPORTS.NS", "ADANIGREEN.NS"
+    ],
+    "Industrial": [
+        "JSWSTEEL.NS", "POWERGRID.NS", "SHREECEM.NS", "COLPAL.NS", "BOSCHLTD.NS", "UPL.NS", "VEDL.NS"
+    ]
+}
+
+
+# Sidebar: Control Panel with Category and Stocks selectboxes
+st.sidebar.title("Control Panel")
+selected_category = st.sidebar.selectbox("Category", list(stock_categories.keys()))
+available_tickers = stock_categories[selected_category]
+ticker = st.sidebar.selectbox("Stocks", available_tickers, index=0)
+chart_type = st.sidebar.radio("Chart Type", ("Line Chart", "Candlestick Chart"))
+forecast_method = st.sidebar.selectbox("Forecast Method", ("Polynomial", "ARIMA"))
+forecast_days = st.sidebar.slider("Forecast Horizon (Days)", min_value=5, max_value=30, value=10, step=1)
+today = datetime.today().date()
+default_start = today - timedelta(days=182)
+date_range = st.sidebar.date_input("Date Range", [default_start, today])
+if len(date_range) != 2:
+    st.error("Select both start and end dates.")
+    st.stop()
+start_date, end_date = date_range
+start_str = start_date.strftime("%Y-%m-%d")
+end_str = end_date.strftime("%Y-%m-%d")
+
+# Add control panel arrow hint for small screens
+st.sidebar.markdown('<div class="control-arrow">&#8592; Tap on the control panel for fetching data</div>', unsafe_allow_html=True)
+
+# Initialize session state for data fetching
+if "data_fetched" not in st.session_state:
+    st.session_state.data_fetched = False
+
+# The Results button (formerly "Fetch Data")
+if st.sidebar.button("Results"):
+    st.session_state.data_fetched = True
+
+# Create tabs (About is always visible)
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Current Status", "Historical Chart", "Technical Analysis", "Forecast & Predictions", "About"])
 
 # ---------------------------
 # Helper: Scrollable Chart Display (Responsive)
@@ -93,7 +180,6 @@ def display_scrollable_chart(fig):
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
     data = base64.b64encode(buf.getbuffer()).decode("ascii")
-    # The image will always scale to 100% of its container, making it responsive.
     html = f'<div style="overflow-x: auto; width: 100%;"><img src="data:image/png;base64,{data}" style="width: 100%; max-width: 1500px;"/></div>'
     st.markdown(html, unsafe_allow_html=True)
 
@@ -102,7 +188,6 @@ def display_scrollable_chart(fig):
 # ---------------------------
 @st.cache_data(show_spinner=False)
 def get_stock_data_yf(ticker, start=None, end=None, period='6mo'):
-    """Download historical stock data using yfinance and ensure OHLCV columns are numeric."""
     if start and end:
         data = yf.download(ticker, start=start, end=end, auto_adjust=True)
     else:
@@ -119,7 +204,6 @@ def get_stock_data_yf(ticker, start=None, end=None, period='6mo'):
     return data
 
 def get_company_name(ticker):
-    """Retrieve the full company name using yfinance."""
     try:
         tkr = yf.Ticker(ticker)
         info = tkr.info
@@ -127,8 +211,7 @@ def get_company_name(ticker):
     except Exception:
         return ticker
 
-def get_alpha_vantage_daily_data(ticker, start=None, end=None, outputsize="compact", api_key=ALPHA_API_KEY):
-    """Fetch daily historical stock data using Alpha Vantage API and filter by date."""
+def get_alpha_vantage_daily_data(ticker, start=None, end=None, outputsize="compact", api_key="VXT9V6JSOD1JR0IM"):
     url = "https://www.alphavantage.co/query"
     params = {"function": "TIME_SERIES_DAILY", "symbol": ticker, "apikey": api_key, "outputsize": outputsize}
     response = requests.get(url, params=params)
@@ -146,8 +229,7 @@ def get_alpha_vantage_daily_data(ticker, start=None, end=None, outputsize="compa
         df = df.loc[mask]
     return df
 
-def get_alpha_vantage_global_quote(ticker, api_key=ALPHA_API_KEY):
-    """Fetch realtime stock data using Alpha Vantage API."""
+def get_alpha_vantage_global_quote(ticker, api_key="VXT9V6JSOD1JR0IM"):
     url = "https://www.alphavantage.co/query"
     params = {"function": "GLOBAL_QUOTE", "symbol": ticker, "apikey": api_key}
     response = requests.get(url, params=params)
@@ -157,7 +239,6 @@ def get_alpha_vantage_global_quote(ticker, api_key=ALPHA_API_KEY):
     return data["Global Quote"]
 
 def get_current_status(ticker):
-    """Retrieve current day status from yfinance ticker.info."""
     try:
         tkr = yf.Ticker(ticker)
         info = tkr.info
@@ -176,11 +257,9 @@ def get_current_status(ticker):
 # Analysis Functions
 # ---------------------------
 def calculate_sma(data, window=20):
-    """Calculate the SMA on closing prices."""
     return data['Close'].rolling(window=window).mean()
 
 def calculate_bollinger_bands(data, window=20, num_std=2):
-    """Calculate Bollinger Bands."""
     sma = data['Close'].rolling(window=window).mean()
     std = data['Close'].rolling(window=window).std()
     upper_band = sma + num_std * std
@@ -188,7 +267,6 @@ def calculate_bollinger_bands(data, window=20, num_std=2):
     return sma, upper_band, lower_band
 
 def calculate_macd(data, fast=12, slow=26, signal=9):
-    """Calculate MACD and Signal Line."""
     exp1 = data['Close'].ewm(span=fast, adjust=False).mean()
     exp2 = data['Close'].ewm(span=slow, adjust=False).mean()
     macd = exp1 - exp2
@@ -196,7 +274,6 @@ def calculate_macd(data, fast=12, slow=26, signal=9):
     return macd, signal_line
 
 def calculate_RSI(data, window=14):
-    """Calculate the Relative Strength Index (RSI)."""
     delta = data['Close'].diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
@@ -207,10 +284,6 @@ def calculate_RSI(data, window=14):
     return RSI
 
 def ml_forecast(data, forecast_days=10, method="Polynomial", degree=2):
-    """
-    Forecast future closing prices using Polynomial regression (degree-2 by default)
-    or ARIMA. Returns a Series of forecasted values.
-    """
     if method == "Polynomial":
         df = data.copy().reset_index()
         df['Time'] = np.arange(len(df))
@@ -239,7 +312,6 @@ def ml_forecast(data, forecast_days=10, method="Polynomial", degree=2):
 # Plotting Functions using Matplotlib / mplfinance
 # ---------------------------
 def set_plot_style():
-    """Set a clean matplotlib style."""
     available = plt.style.available
     if "seaborn-whitegrid" in available:
         plt.style.use("seaborn-whitegrid")
@@ -247,7 +319,6 @@ def set_plot_style():
         plt.style.use("default")
 
 def plot_line_chart(data, sma, ticker, company_name):
-    """Plot a line chart of historical close and SMA."""
     set_plot_style()
     fig, ax = plt.subplots(figsize=(10, 6), dpi=100)
     data_inr = data['Close'] * USD_TO_INR
@@ -277,7 +348,6 @@ def plot_line_chart(data, sma, ticker, company_name):
     return fig
 
 def plot_candlestick_chart(data, ticker, company_name):
-    """Plot a candlestick chart with volume and a 20-day moving average using mplfinance."""
     df = data.copy()
     required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
     for col in required_cols:
@@ -289,7 +359,6 @@ def plot_candlestick_chart(data, ticker, company_name):
     return fig
 
 def plot_forecast_chart(data, forecast, ticker, company_name):
-    """Plot forecasted prices along with the last 30 days of historical close."""
     set_plot_style()
     fig, ax = plt.subplots(figsize=(10, 6), dpi=100)
     hist_context = data.tail(30)
@@ -309,7 +378,6 @@ def plot_forecast_chart(data, forecast, ticker, company_name):
     return fig
 
 def plot_technical_indicators(data, ticker, company_name):
-    """Plot Bollinger Bands, RSI, and MACD in a multi-panel chart."""
     set_plot_style()
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 12), sharex=True, dpi=100)
     # Bollinger Bands
@@ -347,31 +415,12 @@ def plot_technical_indicators(data, ticker, company_name):
     return fig
 
 # ---------------------------
-# Main App Layout with Tabs
+# Main App Layout and Tab Content
 # ---------------------------
 def main():
-    st.title("QuantiQ (Stock Analysis Platform)")
+    ALPHA_API_KEY = "VXT9V6JSOD1JR0IM"
     
-    # Sidebar: Control Panel
-    st.sidebar.title("Control Panel")
-    ticker = st.sidebar.selectbox("Ticker Symbol", SAMPLE_TICKERS, index=0)
-    chart_type = st.sidebar.radio("Chart Type", ("Line Chart", "Candlestick Chart"))
-    forecast_method = st.sidebar.selectbox("Forecast Method", ("Polynomial", "ARIMA"))
-    forecast_days = st.sidebar.slider("Forecast Horizon (Days)", min_value=5, max_value=30, value=10, step=1)
-    today = datetime.today().date()
-    default_start = today - timedelta(days=182)
-    date_range = st.sidebar.date_input("Date Range", [default_start, today])
-    if len(date_range) != 2:
-        st.error("Select both start and end dates.")
-        return
-    start_date, end_date = date_range
-    start_str = start_date.strftime("%Y-%m-%d")
-    end_str = end_date.strftime("%Y-%m-%d")
-    
-    # Main tabs for analysis sections
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "Historical Chart", "Technical Analysis", "Forecast & Predictions", "About"])
-    
-    if st.sidebar.button("Fetch Data"):
+    if st.session_state.data_fetched:
         with st.spinner(f"Fetching data for {ticker} from {start_str} to {end_str}..."):
             data = get_stock_data_yf(ticker, start=start_str, end=end_str)
             source = "yfinance"
@@ -429,34 +478,40 @@ def main():
                 forecast_df.index.name = "Date"
                 st.table(forecast_df)
             
-            with tab5:
-                st.subheader("About This Platform")
-                st.markdown("""
-                **QuantiQ (Stock Analysis Platform)** provides a comprehensive suite of trading analysis tools:
-                
-                - **Overview:** Displays the current market status and realtime updates.
-                - **Historical Chart:** Visualize historical price data as a line or candlestick chart with volume and a 20-day moving average.
-                - **Technical Analysis:** Explore key technical indicators such as Bollinger Bands, RSI, and MACD.
-                - **Forecast & Predictions:** Forecast future prices using advanced Polynomial or ARIMA models.
-                
-                **Glossary:**
-                - **SMA:** Simple Moving Average – smooths price data over time.
-                - **Candlestick Chart:** Visualizes open, high, low, and close prices to reveal market sentiment.
-                - **Bollinger Bands:** Volatility bands that indicate overbought or oversold conditions.
-                - **RSI:** Relative Strength Index – a momentum oscillator indicating overbought/oversold levels.
-                - **MACD:** Moving Average Convergence Divergence – measures momentum changes.
-                - **Polynomial Forecast:** Uses polynomial regression for capturing non-linear trends.
-                - **ARIMA Forecast:** A statistical forecasting method using autoregressive integrated moving averages.
-                
-                Use the Control Panel to adjust parameters and explore the data.
-                """)
-            
+            # Optionally display realtime data if using Alpha Vantage
             if source == "Alpha Vantage":
                 quote = get_alpha_vantage_global_quote(ticker, api_key=ALPHA_API_KEY)
                 if quote:
                     st.subheader("Realtime Data (Alpha Vantage)")
                     st.json(quote)
-    
+    else:
+        for tab in (tab1, tab2, tab3, tab4):
+            with tab:
+                st.info("Tap 'Results' in the Control Panel to fetch data for analysis.")
+                
+    # About tab is always visible
+    with tab5:
+        st.subheader("About This Platform")
+        st.markdown("""
+        **QuantiQ (Stock Analysis Platform)** provides a comprehensive suite of trading analysis tools:
+        
+        - **Current Status:** Displays the current market status and realtime updates.
+        - **Historical Chart:** Visualize historical price data as a line or candlestick chart with volume and a 20-day moving average.
+        - **Technical Analysis:** Explore key technical indicators such as Bollinger Bands, RSI, and MACD.
+        - **Forecast & Predictions:** Forecast future prices using advanced Polynomial or ARIMA models.
+        
+        **Glossary:**
+        - **SMA:** Simple Moving Average – smooths price data over time.
+        - **Candlestick Chart:** Visualizes open, high, low, and close prices to reveal market sentiment.
+        - **Bollinger Bands:** Volatility bands that indicate overbought or oversold conditions.
+        - **RSI:** Relative Strength Index – a momentum oscillator indicating overbought/oversold levels.
+        - **MACD:** Moving Average Convergence Divergence – measures momentum changes.
+        - **Polynomial Forecast:** Uses polynomial regression for capturing non-linear trends.
+        - **ARIMA Forecast:** A statistical forecasting method using autoregressive integrated moving averages.
+        
+        Use the Control Panel to adjust parameters and explore the data.
+        """)
+        
     st.sidebar.markdown("---")
     st.sidebar.info(
         "QuantiQ provides an innovative, responsive, and trading-friendly analysis experience with detailed charts, "
